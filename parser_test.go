@@ -4464,6 +4464,32 @@ func (s *testParserSuite) TestTimestampDiffUnit(c *C) {
 	s.RunTest(c, table)
 }
 
+func (s *testParserSuite) TestFuncCallExprOffset(c *C) {
+	// Test case for offset field on func call expr.
+	p := parser.New()
+	stmt, _, err := p.Parse("SELECT s.a(), b();", "", "")
+	c.Assert(err, IsNil)
+	ss := stmt[0].(*ast.SelectStmt)
+	fields := ss.Fields.Fields
+	c.Assert(len(fields), Equals, 2)
+
+	{
+		// s.a()
+		expr := fields[0].Expr
+		f, ok := expr.(*ast.FuncCallExpr)
+		c.Assert(ok, IsTrue)
+		c.Assert(f.OriginTextPosition(), Equals, 7)
+	}
+
+	{
+		// b()
+		expr := fields[1].Expr
+		f, ok := expr.(*ast.FuncCallExpr)
+		c.Assert(ok, IsTrue)
+		c.Assert(f.OriginTextPosition(), Equals, 14)
+	}
+}
+
 func (s *testParserSuite) TestSessionManage(c *C) {
 	table := []testCase{
 		// Kill statement.
@@ -5271,6 +5297,7 @@ type nodeTextCleaner struct {
 // Enter implements Visitor interface.
 func (checker *nodeTextCleaner) Enter(in ast.Node) (out ast.Node, skipChildren bool) {
 	in.SetText("")
+	in.SetOriginTextPosition(0)
 	switch node := in.(type) {
 	case *ast.CreateTableStmt:
 		for _, opt := range node.Options {
@@ -5517,6 +5544,7 @@ func (s *testParserSuite) TestStatisticsOps(c *C) {
 
 func (s *testParserSuite) TestHighNotPrecedenceMode(c *C) {
 	p := parser.New()
+	var sb strings.Builder
 
 	sms, _, err := p.Parse("SELECT NOT 1 BETWEEN -5 AND 5", "", "")
 	c.Assert(err, IsNil)
@@ -5525,4 +5553,34 @@ func (s *testParserSuite) TestHighNotPrecedenceMode(c *C) {
 	v1, ok := v.Fields.Fields[0].Expr.(*ast.UnaryOperationExpr)
 	c.Assert(ok, IsTrue)
 	c.Assert(v1.Op, Equals, opcode.Not)
+	err = sms[0].Restore(NewRestoreCtx(DefaultRestoreFlags, &sb))
+	c.Assert(err, IsNil)
+	restoreSQL := sb.String()
+	c.Assert(restoreSQL, Equals, "SELECT NOT 1 BETWEEN -5 AND 5")
+	sb.Reset()
+
+	sms, _, err = p.Parse("SELECT !1 BETWEEN -5 AND 5", "", "")
+	c.Assert(err, IsNil)
+	v, ok = sms[0].(*ast.SelectStmt)
+	c.Assert(ok, IsTrue)
+	_, ok = v.Fields.Fields[0].Expr.(*ast.BetweenExpr)
+	c.Assert(ok, IsTrue)
+	err = sms[0].Restore(NewRestoreCtx(DefaultRestoreFlags, &sb))
+	c.Assert(err, IsNil)
+	restoreSQL = sb.String()
+	c.Assert(restoreSQL, Equals, "SELECT !1 BETWEEN -5 AND 5")
+	sb.Reset()
+
+	p = parser.New()
+	p.SetSQLMode(mysql.ModeHighNotPrecedence)
+	sms, _, err = p.Parse("SELECT NOT 1 BETWEEN -5 AND 5", "", "")
+	c.Assert(err, IsNil)
+	v, ok = sms[0].(*ast.SelectStmt)
+	c.Assert(ok, IsTrue)
+	_, ok = v.Fields.Fields[0].Expr.(*ast.BetweenExpr)
+	c.Assert(ok, IsTrue)
+	err = sms[0].Restore(NewRestoreCtx(DefaultRestoreFlags, &sb))
+	c.Assert(err, IsNil)
+	restoreSQL = sb.String()
+	c.Assert(restoreSQL, Equals, "SELECT !1 BETWEEN -5 AND 5")
 }

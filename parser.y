@@ -5951,7 +5951,7 @@ SimpleExpr:
 |	SumExpr
 |	'!' SimpleExpr %prec neg
 	{
-		$$ = &ast.UnaryOperationExpr{Op: opcode.Not, V: $2}
+		$$ = &ast.UnaryOperationExpr{Op: opcode.Not2, V: $2}
 	}
 |	'~' SimpleExpr %prec neg
 	{
@@ -5971,7 +5971,7 @@ SimpleExpr:
 	}
 |	not2 SimpleExpr %prec neg
 	{
-		$$ = &ast.UnaryOperationExpr{Op: opcode.Not, V: $2}
+		$$ = &ast.UnaryOperationExpr{Op: opcode.Not2, V: $2}
 	}
 |	SubSelect2
 |	'(' Expression ')'
